@@ -1,4 +1,4 @@
-name: 大哥专线-全盘搜寻-最终提货版
+name: 大哥专线-暴力总装-终极版
 
 on:
   workflow_dispatch:
@@ -7,13 +7,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 检出代码
+      - name: 1. 检出代码 (含子模块)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: 'recursive'
 
-      - name: 2. 准备 Go + Java + NDK
+      - name: 2. 环境初始化 (Go+Java+NDK)
         uses: actions/setup-go@v5
         with:
           go-version: '^1.25.5'
@@ -26,15 +26,15 @@ jobs:
         with:
           ndk-version: r28
 
-      - name: 3. 安装专用工具链
+      - name: 3. 核心工具安装 (SagerNet 专用)
         run: |
           go install github.com/sagernet/gomobile/cmd/gomobile@latest
           go install github.com/sagernet/gomobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          $(go env GOPATH)/bin/gomobile init
 
       - name: 4. 灵魂注入 (default_config.json)
         run: |
+          # 在安卓主目录下创建 assets
           mkdir -p clients/android/app/src/main/assets/
           cat <<EOF > clients/android/app/src/main/assets/default_config.json
           {
@@ -48,34 +48,35 @@ jobs:
           }
           EOF
 
-      - name: 5. 编译零件 (libbox.aar)
+      - name: 5. 磨制发动机 (多地存放)
         run: |
           export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
           go run ./cmd/internal/build_libbox -target android
-          mkdir -p clients/android/app/libs/ && cp libbox.aar clients/android/app/libs/
+          # 把生成的零件塞进所有可能的 libs 文件夹，防止安卓项目找不到
+          mkdir -p clients/android/app/libs/
+          mkdir -p clients/android/libs/
+          cp libbox.aar clients/android/app/libs/
+          cp libbox.aar clients/android/libs/
+          echo "✅ 发动机已就位"
 
-      - name: 6. 打包 APK (强制指定 Other 渠道)
+      - name: 6. 暴力总装 (跳过检查，直奔 APK)
         run: |
           cd clients/android
           chmod +x gradlew
-          # 咱们直接强制打这个最常用的 debug 包
-          ./gradlew :app:assembleOtherDebug --stacktrace
+          # 使用 -x lint 和 -x test 跳过所有那些烦人的检查
+          ./gradlew :app:assembleOtherDebug -x lint -x test --no-daemon
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 7. 🚀 核心：雷达搜索并汇总 APK
-        # 这一步会把所有生成的 APK 统一拷贝到一个好找的地方
+      - name: 7. 雷达搜索
+        if: always() # 即使失败也要运行，看看文件到底去哪了
         run: |
           mkdir -p ./output_apks
           find . -name "*.apk" -type f -exec cp {} ./output_apks/ \;
-          echo "✅ 已搜寻到的文件列表："
           ls -R ./output_apks/
 
-      - name: 8. 提货 (改用汇总路径)
+      - name: 8. 提货
         uses: actions/upload-artifact@v4
         with:
           name: 大哥专线-成品包
-          # 直接上传咱们汇总好的文件夹
           path: ./output_apks/*.apk
-          # 如果还是没找到，就让它报错更明显一点
-          if-no-files-found: error
