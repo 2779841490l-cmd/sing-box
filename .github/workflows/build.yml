@@ -1,4 +1,4 @@
-name: 大哥专线-无感化成品总装
+name: 大哥专线-无感化成品-Java修复版
 
 on:
   workflow_dispatch:
@@ -13,19 +13,13 @@ jobs:
           fetch-depth: 0
           submodules: 'recursive'
 
-      - name: 2. 注入“灵魂配置” (核心手术)
-        # 这一步用脚本直接修改安卓的启动代码，把你的 JSON 硬塞进去
-        run: |
-          # 定义你的 130 元双通道配置
-          JSON_CONFIG='{ "outbounds": [ { "type": "urltest", "tag": "🚀智能加速", "outbounds": ["Hy2-极速", "VLESS-保底"], "url": "https://www.google.com/generate_204", "interval": "5m" }, { "type": "hysteria2", "tag": "Hy2-极速", "server": "107.174.140.235", "server_port": 56789, "password": "123456", "obfs": { "type": "salamander", "password": "dage666" }, "tls": { "enabled": true, "server_name": "www.icloud.com", "insecure": true } }, { "type": "vless", "tag": "VLESS-保底", "server": "107.174.140.235", "server_port": 443, "uuid": "3c343d91-b287-4646-b049-086752e67892", "tls": { "enabled": true, "server_name": "www.apple.com", "utls": { "enabled": true, "fingerprint": "chrome" }, "reality": { "enabled": true, "public_key": "JHpo-H-roJ61qZzQaKofejfJU33MY-uu8YX-cncn8z0", "short_id": "9b930b77" } } }, { "type": "direct", "tag": "direct" } ], "route": { "auto_detect_interface": true, "rules": [ { "geosite": ["cn"], "geoip": ["cn"], "outbound": "direct" }, { "geosite": ["google", "gemini", "openai"], "outbound": "🚀智能加速" } ] } }'
-          
-          # 这行命令是手术刀：在安卓启动加载逻辑中注入这串配置
-          # 我们针对官方的 ProfileManager 进行注入
-          TARGET_FILE="clients/android/app/src/main/java/io/nekohasekai/sfa/constant/Config.kt"
-          # (备注：根据不同版本，注入点可能微调，这里演示原理)
-          echo "注入配置到源码..."
+      - name: 2. 准备官方 Java 17 环境 (自动设置 JAVA_HOME)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin' # 使用最稳的 Temurin 发行版
 
-      - name: 3. 准备编译环境 (Go + NDK)
+      - name: 3. 准备 Go 1.25 和 NDK r28
         uses: actions/setup-go@v5
         with:
           go-version: '^1.25.5'
@@ -34,7 +28,56 @@ jobs:
         with:
           ndk-version: r28
 
-      - name: 4. 编译内核零件 (lib_android)
+      - name: 4. 关键：注入“130元灵魂配置”
+        # 这一步我们直接覆盖默认配置文件
+        run: |
+          mkdir -p clients/android/app/src/main/assets/
+          cat <<EOF > clients/android/app/src/main/assets/default_config.json
+          {
+            "outbounds": [
+              {
+                "type": "urltest",
+                "tag": "🚀智能加速",
+                "outbounds": ["Hy2-极速", "VLESS-保底"],
+                "url": "https://www.google.com/generate_204",
+                "interval": "5m"
+              },
+              {
+                "type": "hysteria2",
+                "tag": "Hy2-极速",
+                "server": "107.174.140.235",
+                "server_port": 56789,
+                "password": "123456",
+                "obfs": { "type": "salamander", "password": "dage666" },
+                "tls": { "enabled": true, "server_name": "www.icloud.com", "insecure": true }
+              },
+              {
+                "type": "vless",
+                "tag": "VLESS-保底",
+                "server": "107.174.140.235",
+                "server_port": 443,
+                "uuid": "3c343d91-b287-4646-b049-086752e67892",
+                "tls": { 
+                  "enabled": true, 
+                  "server_name": "www.apple.com", 
+                  "utls": { "enabled": true, "fingerprint": "chrome" },
+                  "reality": { "enabled": true, "public_key": "JHpo-H-roJ61qZzQaKofejfJU33MY-uu8YX-cncn8z0", "short_id": "9b930b77" }
+                }
+              },
+              { "type": "direct", "tag": "direct" }
+            ],
+            "route": {
+              "auto_detect_interface": true,
+              "rules": [
+                { "geosite": ["cn"], "geoip": ["cn"], "outbound": "direct" },
+                { "geosite": ["google", "gemini", "openai"], "outbound": "🚀智能加速" }
+              ]
+            }
+          }
+          EOF
+          echo "✅ 配置已强行注入 assets 目录"
+
+      - name: 5. 编译内核零件 (lib_android)
         run: |
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
@@ -42,18 +85,18 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 5. 总装成品 APK
+      - name: 6. 总装成品 APK (不再手动设置 JAVA_HOME)
         run: |
           mkdir -p clients/android/app/libs
           cp *.aar clients/android/app/libs/
           cd clients/android
           chmod +x gradlew
-          ./gradlew :app:assembleOtherDebug
+          # 直接运行，setup-java 会帮我们处理好环境
+          ./gradlew :app:assembleOtherDebug --stacktrace
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
-      - name: 6. 提货
+      - name: 7. 提货
         uses: actions/upload-artifact@v4
         with:
           name: 大哥专线-无感化安装包
