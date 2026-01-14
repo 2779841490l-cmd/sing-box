@@ -1,4 +1,4 @@
-name: 大哥专线-专用工具版-总装起飞
+name: 大哥专线-全盘搜寻-最终提货版
 
 on:
   workflow_dispatch:
@@ -7,39 +7,33 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 检出全量代码 (含子模块)
+      - name: 1. 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: 'recursive'
 
-      - name: 2. 准备环境 (Go 1.25.5 + Java 17)
+      - name: 2. 准备 Go + Java + NDK
         uses: actions/setup-go@v5
         with:
           go-version: '^1.25.5'
-      - name: 准备 Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-
-      - name: 3. 准备 NDK r28
+      - uses: nttld/setup-ndk@v1
         id: setup-ndk
-        uses: nttld/setup-ndk@v1
         with:
           ndk-version: r28
 
-      - name: 4. 关键修正：安装 SagerNet 专用版 Gomobile
+      - name: 3. 安装专用工具链
         run: |
-          # 注意：这里换成了 sagernet 自己的仓库地址
           go install github.com/sagernet/gomobile/cmd/gomobile@latest
           go install github.com/sagernet/gomobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          # 初始化专用版工具
           $(go env GOPATH)/bin/gomobile init
-          echo "✅ SagerNet 专用工具链已就绪"
 
-      - name: 5. 灵魂注入：写入 130 元配置
+      - name: 4. 灵魂注入 (default_config.json)
         run: |
           mkdir -p clients/android/app/src/main/assets/
           cat <<EOF > clients/android/app/src/main/assets/default_config.json
@@ -47,44 +41,41 @@ jobs:
             "outbounds": [
               { "type": "urltest", "tag": "🚀智能加速", "outbounds": ["Hy2-极速", "VLESS-保底"], "url": "https://www.google.com/generate_204", "interval": "5m" },
               { "type": "hysteria2", "tag": "Hy2-极速", "server": "107.174.140.235", "server_port": 56789, "password": "123456", "obfs": { "type": "salamander", "password": "dage666" }, "tls": { "enabled": true, "server_name": "www.icloud.com", "insecure": true } },
-              { "type": "vless", "tag": "VLESS-保底", "server": "107.174.140.235", "server_port": 443, "uuid": "3c343d91-b287-4646-b049-086752e67892", "tls": { 
-                "enabled": true, 
-                "server_name": "www.apple.com", 
-                "utls": { "enabled": true, "fingerprint": "chrome" },
-                "reality": { "enabled": true, "public_key": "JHpo-H-roJ61qZzQaKofejfJU33MY-uu8YX-cncn8z0", "short_id": "9b930b77" }
-              } },
+              { "type": "vless", "tag": "VLESS-保底", "server": "107.174.140.235", "server_port": 443, "uuid": "3c343d91-b287-4646-b049-086752e67892", "tls": { "enabled": true, "server_name": "www.apple.com", "utls": { "enabled": true, "fingerprint": "chrome" }, "reality": { "enabled": true, "public_key": "JHpo-H-roJ61qZzQaKofejfJU33MY-uu8YX-cncn8z0", "short_id": "9b930b77" } } },
               { "type": "direct", "tag": "direct" }
             ],
             "route": { "auto_detect_interface": true, "rules": [ { "geosite": ["cn"], "geoip": ["cn"], "outbound": "direct" }, { "geosite": ["google", "gemini", "openai"], "outbound": "🚀智能加速" } ] }
           }
           EOF
 
-      - name: 6. 核心步骤：编译零件 (libbox.aar)
+      - name: 5. 编译零件 (libbox.aar)
         run: |
           export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
-          # 直接运行官方构建程序，现在它能认出特制版的 gomobile 了
           go run ./cmd/internal/build_libbox -target android
-          
-          if [ -f "libbox.aar" ]; then
-            echo "✅ 零件生产成功"
-            mkdir -p clients/android/app/libs/
-            cp libbox.aar clients/android/app/libs/
-          else
-            echo "❌ 零件缺失"
-            exit 1
-          fi
+          mkdir -p clients/android/app/libs/ && cp libbox.aar clients/android/app/libs/
 
-      - name: 7. 总装 APK
+      - name: 6. 打包 APK (强制指定 Other 渠道)
         run: |
           cd clients/android
           chmod +x gradlew
-          TASK=$(./gradlew tasks --all | grep "^assemble.*Debug" | head -n 1 | awk '{print $1}')
-          ./gradlew $TASK --stacktrace
+          # 咱们直接强制打这个最常用的 debug 包
+          ./gradlew :app:assembleOtherDebug --stacktrace
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 8. 提货
+      - name: 7. 🚀 核心：雷达搜索并汇总 APK
+        # 这一步会把所有生成的 APK 统一拷贝到一个好找的地方
+        run: |
+          mkdir -p ./output_apks
+          find . -name "*.apk" -type f -exec cp {} ./output_apks/ \;
+          echo "✅ 已搜寻到的文件列表："
+          ls -R ./output_apks/
+
+      - name: 8. 提货 (改用汇总路径)
         uses: actions/upload-artifact@v4
         with:
-          name: 大哥专线-无感成品包
-          path: clients/android/app/build/outputs/apk/**/*.apk
+          name: 大哥专线-成品包
+          # 直接上传咱们汇总好的文件夹
+          path: ./output_apks/*.apk
+          # 如果还是没找到，就让它报错更明显一点
+          if-no-files-found: error
