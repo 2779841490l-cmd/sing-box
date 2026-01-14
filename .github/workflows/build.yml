@@ -1,4 +1,4 @@
-name: 大哥专线-API适配-终极冲锋版
+name: 大哥专线-API适配-终极总装版
 
 on:
   workflow_dispatch:
@@ -54,11 +54,11 @@ jobs:
           mkdir -p clients/android/app/libs/
           cp libbox.aar clients/android/app/libs/
 
-      - name: 6. 关键手术：解决 SDK 21 与 23 冲突
+      - name: 6. 关键手术：修正 SDK 21 与 23 冲突
+        # 自动搜索并替换 build.gradle 和 build.gradle.kts 里的 minSdk 版本
         run: |
-          # 自动修改所有 gradle 文件，把 minSdkVersion 从 21 改成 23
-          find clients/android -name "*.gradle*" -exec sed -i 's/minSdkVersion 21/minSdkVersion 23/g' {} +
-          find clients/android -name "*.gradle*" -exec sed -i 's/minSdk = 21/minSdk = 23/g' {} +
+          find clients/android -name "build.gradle*" -exec sed -i 's/minSdk = 21/minSdk = 23/g' {} +
+          find clients/android -name "build.gradle*" -exec sed -i 's/minSdkVersion 21/minSdkVersion 23/g' {} +
           echo "✅ 已强制提升最小 SDK 版本到 23 (Android 6.0)"
 
       - name: 7. 暴力总装 (跳过检查)
@@ -69,7 +69,7 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 8. 雷达搜索与提货
+      - name: 8. 雷达搜索与汇总
         if: always()
         run: |
           mkdir -p ./output_apks
@@ -79,5 +79,5 @@ jobs:
       - name: 9. 最终提货
         uses: actions/upload-artifact@v4
         with:
-          name: 大哥专线-无感成品包-API23
+          name: 大哥专线-成品包-API23
           path: ./output_apks/*.apk
