@@ -1,4 +1,4 @@
-name: 大哥专线-稳定版-无感总装-终极闭环
+name: 大哥专线-逻辑周密-稳定版总装
 
 on:
   workflow_dispatch:
@@ -7,19 +7,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 检出代码并锁定稳定版 v1.10.1
+      - name: 1. 深度检出 (锁定稳定版 v1.12.16)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # 必须为 0，否则看不到 Tag
           submodules: 'recursive'
-      
+
       - name: 2. 强制切换到稳定 Tag
         run: |
-          git checkout v1.10.1
+          git checkout v1.12.16
           git submodule update --init --recursive
-          echo "✅ 已锁定到 v1.10.1 稳定版，排除开发版干扰"
+          echo "✅ 已锁定到 v1.12.16 稳定版，代码接口已对齐"
 
-      - name: 3. 环境初始化 (Go+Java+NDK)
+      - name: 3. 环境锁定 (Go, Java, NDK)
         uses: actions/setup-go@v5
         with:
           go-version: '^1.25.5'
@@ -32,13 +32,14 @@ jobs:
         with:
           ndk-version: r28
 
-      - name: 4. 安装 SagerNet 专用工具
+      - name: 4. 安装 SagerNet 专用 Gomobile
         run: |
           go install github.com/sagernet/gomobile/cmd/gomobile@latest
           go install github.com/sagernet/gomobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          $(go env GOPATH)/bin/gomobile init
 
-      - name: 5. 灵魂注入 (130元双通道配置)
+      - name: 5. 灵魂注入 (default_config.json)
         run: |
           mkdir -p clients/android/app/src/main/assets/
           cat <<EOF > clients/android/app/src/main/assets/default_config.json
@@ -52,36 +53,41 @@ jobs:
             "route": { "auto_detect_interface": true, "rules": [ { "geosite": ["cn"], "geoip": ["cn"], "outbound": "direct" }, { "geosite": ["google", "gemini", "openai"], "outbound": "🚀智能加速" } ] }
           }
           EOF
+          echo "✅ 资产配置已物理注入"
 
       - name: 6. 零件生产 (libbox.aar)
         run: |
           export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
+          # 运行官方构建脚本
           go run ./cmd/internal/build_libbox -target android
           mkdir -p clients/android/app/libs/
           cp libbox.aar clients/android/app/libs/
 
-      - name: 7. 暴力适配 API 23 (解决 Manifest 冲突)
+      - name: 7. 暴力对齐 API (彻底解决 SDK 冲突)
         run: |
-          find clients/android -type f \( -name "*.gradle" -o -name "*.kts" \) -print0 | xargs -0 perl -pi -e 's/(minSdk.*?)\d+/$1 23/g'
-          find clients/android -type f \( -name "*.gradle" -o -name "*.kts" \) -print0 | xargs -0 perl -pi -e 's/(minSdkVersion.*?)\d+/$1 23/g'
+          # 地毯式搜索所有可能定义 minSdk 的位置并强改 23
+          find . -type f \( -name "*.gradle" -o -name "*.kts" \) -print0 | xargs -0 perl -pi -e 's/(minSdk.*?)\d+/$1 23/g'
+          find . -type f \( -name "*.gradle" -o -name "*.kts" \) -print0 | xargs -0 perl -pi -e 's/(minSdkVersion.*?)\d+/$1 23/g'
+          echo "✅ API 兼容性已强制锁定在 Android 6.0+"
 
-      - name: 8. 终极打包 (OtherDebug)
+      - name: 8. 总装 APK
         run: |
           cd clients/android
           chmod +x gradlew
-          ./gradlew :app:assembleOtherDebug -x lint -x test --no-daemon
+          # 增加 --no-configuration-cache 彻底避免缓存导致配置失败
+          ./gradlew :app:assembleOtherDebug -x lint -x test --no-daemon --no-configuration-cache
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 9. 提货
+      - name: 9. 自动搜寻与提货
         if: always()
         run: |
           mkdir -p ./output_apks
           find . -name "*.apk" -type f -exec cp {} ./output_apks/ \;
           ls -R ./output_apks/
 
-      - name: 10. 上传成品
+      - name: 10. 成果上传
         uses: actions/upload-artifact@v4
         with:
-          name: 大哥专线-v1.10.1-稳定版成品
+          name: 大哥专线-稳定版成品-API23
           path: ./output_apks/*.apk
