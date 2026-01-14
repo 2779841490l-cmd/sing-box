@@ -1,4 +1,4 @@
-name: 大哥专线-无感化成品-Java修复版
+name: 大哥专线-跳过Makefile-直接总装版
 
 on:
   workflow_dispatch:
@@ -7,97 +7,80 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 检出官方全量代码
+      - name: 1. 检出全量代码 (包含子模块)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: 'recursive'
 
-      - name: 2. 准备官方 Java 17 环境 (自动设置 JAVA_HOME)
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin' # 使用最稳的 Temurin 发行版
-
-      - name: 3. 准备 Go 1.25 和 NDK r28
+      - name: 2. 准备官方环境 (Go 1.25.5 + Java 17)
         uses: actions/setup-go@v5
         with:
           go-version: '^1.25.5'
-      - uses: nttld/setup-ndk@v1
+      - name: 准备 Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 3. 准备 NDK r28 (官方指定版)
         id: setup-ndk
+        uses: nttld/setup-ndk@v1
         with:
           ndk-version: r28
 
-      - name: 4. 关键：注入“130元灵魂配置”
-        # 这一步我们直接覆盖默认配置文件
+      - name: 4. 暴力修复：手动安装编译工具 (代替 make lib_install)
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          export PATH=$PATH:$(go env GOPATH)/bin
+          gomobile init
+          echo "✅ Gomobile 工具链已准备就绪"
+
+      - name: 5. 灵魂注入：强行写入 130 元配置
         run: |
           mkdir -p clients/android/app/src/main/assets/
           cat <<EOF > clients/android/app/src/main/assets/default_config.json
           {
             "outbounds": [
-              {
-                "type": "urltest",
-                "tag": "🚀智能加速",
-                "outbounds": ["Hy2-极速", "VLESS-保底"],
-                "url": "https://www.google.com/generate_204",
-                "interval": "5m"
-              },
-              {
-                "type": "hysteria2",
-                "tag": "Hy2-极速",
-                "server": "107.174.140.235",
-                "server_port": 56789,
-                "password": "123456",
-                "obfs": { "type": "salamander", "password": "dage666" },
-                "tls": { "enabled": true, "server_name": "www.icloud.com", "insecure": true }
-              },
-              {
-                "type": "vless",
-                "tag": "VLESS-保底",
-                "server": "107.174.140.235",
-                "server_port": 443,
-                "uuid": "3c343d91-b287-4646-b049-086752e67892",
-                "tls": { 
-                  "enabled": true, 
-                  "server_name": "www.apple.com", 
-                  "utls": { "enabled": true, "fingerprint": "chrome" },
-                  "reality": { "enabled": true, "public_key": "JHpo-H-roJ61qZzQaKofejfJU33MY-uu8YX-cncn8z0", "short_id": "9b930b77" }
-                }
-              },
+              { "type": "urltest", "tag": "🚀智能加速", "outbounds": ["Hy2-极速", "VLESS-保底"], "url": "https://www.google.com/generate_204", "interval": "5m" },
+              { "type": "hysteria2", "tag": "Hy2-极速", "server": "107.174.140.235", "server_port": 56789, "password": "123456", "obfs": { "type": "salamander", "password": "dage666" }, "tls": { "enabled": true, "server_name": "www.icloud.com", "insecure": true } },
+              { "type": "vless", "tag": "VLESS-保底", "server": "107.174.140.235", "server_port": 443, "uuid": "3c343d91-b287-4646-b049-086752e67892", "tls": { "enabled": true, "server_name": "www.apple.com", "utls": { "enabled": true, "fingerprint": "chrome" }, "reality": { "enabled": true, "public_key": "JHpo-H-roJ61qZzQaKofejfJU33MY-uu8YX-cncn8z0", "short_id": "9b930b77" } } },
               { "type": "direct", "tag": "direct" }
             ],
-            "route": {
-              "auto_detect_interface": true,
-              "rules": [
-                { "geosite": ["cn"], "geoip": ["cn"], "outbound": "direct" },
-                { "geosite": ["google", "gemini", "openai"], "outbound": "🚀智能加速" }
-              ]
-            }
+            "route": { "auto_detect_interface": true, "rules": [ { "geosite": ["cn"], "geoip": ["cn"], "outbound": "direct" }, { "geosite": ["google", "gemini", "openai"], "outbound": "🚀智能加速" } ] }
           }
           EOF
-          echo "✅ 配置已强行注入 assets 目录"
+          echo "✅ assets 配置注入完毕"
 
-      - name: 5. 编译内核零件 (lib_android)
+      - name: 6. 核心步骤：直接运行 Go 编译脚本 (代替 make lib_android)
         run: |
-          make lib_install
-          export PATH="$PATH:$(go env GOPATH)/bin"
-          make lib_android
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          export PATH=$PATH:$(go env GOPATH)/bin
+          export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
+          # 核心指令：直接运行官方的构建程序
+          go run ./cmd/internal/build_libbox -target android
+          
+          if [ -f "libbox.aar" ]; then
+            echo "✅ 成功获得 libbox.aar 零件"
+            mkdir -p clients/android/app/libs/
+            cp libbox.aar clients/android/app/libs/
+          else
+            echo "❌ 零件没生产出来，请检查上方日志"
+            exit 1
+          fi
 
-      - name: 6. 总装成品 APK (不再手动设置 JAVA_HOME)
+      - name: 7. 总装 APK
         run: |
-          mkdir -p clients/android/app/libs
-          cp *.aar clients/android/app/libs/
           cd clients/android
           chmod +x gradlew
-          # 直接运行，setup-java 会帮我们处理好环境
-          ./gradlew :app:assembleOtherDebug --stacktrace
+          # 自动寻找你能用的打包任务
+          TASK=$(./gradlew tasks --all | grep "^assemble.*Debug" | head -n 1 | awk '{print $1}')
+          ./gradlew $TASK --stacktrace
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 7. 提货
+      - name: 8. 提货
         uses: actions/upload-artifact@v4
         with:
-          name: 大哥专线-无感化安装包
+          name: 大哥专线-无感成品包
           path: clients/android/app/build/outputs/apk/**/*.apk
