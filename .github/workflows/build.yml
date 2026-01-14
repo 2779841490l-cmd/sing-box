@@ -1,4 +1,4 @@
-name: 大哥专线-API适配-终极总装版
+name: 大哥专线-API硬核对齐-终极版
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
           fetch-depth: 0
           submodules: 'recursive'
 
-      - name: 2. 环境初始化 (Go+Java+NDK)
+      - name: 2. 环境初始化
         uses: actions/setup-go@v5
         with:
           go-version: '^1.25.5'
@@ -26,7 +26,7 @@ jobs:
         with:
           ndk-version: r28
 
-      - name: 3. 核心工具安装 (SagerNet 专用)
+      - name: 3. 安装 SagerNet 专用工具
         run: |
           go install github.com/sagernet/gomobile/cmd/gomobile@latest
           go install github.com/sagernet/gomobile/cmd/gobind@latest
@@ -47,37 +47,40 @@ jobs:
           }
           EOF
 
-      - name: 5. 磨制发动机 (libbox.aar)
+      - name: 5. 编译零件 (libbox.aar)
         run: |
           export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
           go run ./cmd/internal/build_libbox -target android
           mkdir -p clients/android/app/libs/
           cp libbox.aar clients/android/app/libs/
 
-      - name: 6. 关键手术：修正 SDK 21 与 23 冲突
-        # 自动搜索并替换 build.gradle 和 build.gradle.kts 里的 minSdk 版本
+      - name: 6. 核心手术：全量强制替换 minSdkVersion
         run: |
-          find clients/android -name "build.gradle*" -exec sed -i 's/minSdk = 21/minSdk = 23/g' {} +
-          find clients/android -name "build.gradle*" -exec sed -i 's/minSdkVersion 21/minSdkVersion 23/g' {} +
-          echo "✅ 已强制提升最小 SDK 版本到 23 (Android 6.0)"
+          # 针对所有的 gradle 和 kts 文件进行全量地毯式搜索替换
+          find clients/android -type f \( -name "*.gradle" -o -name "*.kts" \) -print0 | xargs -0 sed -i 's/minSdkVersion 21/minSdkVersion 23/g'
+          find clients/android -type f \( -name "*.gradle" -o -name "*.kts" \) -print0 | xargs -0 sed -i 's/minSdk = 21/minSdk = 23/g'
+          find clients/android -type f \( -name "*.gradle" -o -name "*.kts" \) -print0 | xargs -0 sed -i 's/minSdkVersion(21)/minSdkVersion(23)/g'
+          find clients/android -type f \( -name "*.gradle" -o -name "*.kts" \) -print0 | xargs -0 sed -i 's/minSdk 21/minSdk 23/g'
+          echo "✅ 所有的 minSdk 21 已被暴力改为 23"
 
       - name: 7. 暴力总装 (跳过检查)
         run: |
           cd clients/android
           chmod +x gradlew
-          ./gradlew :app:assembleOtherDebug -x lint -x test --no-daemon
+          # 增加 --no-configuration-cache 避免缓存干扰
+          ./gradlew :app:assembleOtherDebug -x lint -x test --no-daemon --no-configuration-cache
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 8. 雷达搜索与汇总
+      - name: 8. 雷达搜索与提货
         if: always()
         run: |
           mkdir -p ./output_apks
           find . -name "*.apk" -type f -exec cp {} ./output_apks/ \;
           ls -R ./output_apks/
 
-      - name: 9. 最终提货
+      - name: 9. 提货
         uses: actions/upload-artifact@v4
         with:
-          name: 大哥专线-成品包-API23
+          name: 大哥专线-API23-成品包
           path: ./output_apks/*.apk
