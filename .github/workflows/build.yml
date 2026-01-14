@@ -1,4 +1,4 @@
-name: 大哥专线-逻辑周密-终极闭环版
+name: 大哥专线-稳定版-无感总装-终极闭环
 
 on:
   workflow_dispatch:
@@ -7,13 +7,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 检出代码 (全量包含子模块)
+      - name: 1. 检出代码并锁定稳定版 v1.10.1
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: 'recursive'
+      
+      - name: 2. 强制切换到稳定 Tag
+        run: |
+          git checkout v1.10.1
+          git submodule update --init --recursive
+          echo "✅ 已锁定到 v1.10.1 稳定版，排除开发版干扰"
 
-      - name: 2. 锁定环境精度 (Go, Java, NDK)
+      - name: 3. 环境初始化 (Go+Java+NDK)
         uses: actions/setup-go@v5
         with:
           go-version: '^1.25.5'
@@ -26,14 +32,13 @@ jobs:
         with:
           ndk-version: r28
 
-      - name: 3. 安装 SagerNet 专用工具链
+      - name: 4. 安装 SagerNet 专用工具
         run: |
           go install github.com/sagernet/gomobile/cmd/gomobile@latest
           go install github.com/sagernet/gomobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      - name: 4. 灵魂注入 (default_config.json)
-        # 确保配置在编译前就进入 assets 目录
+      - name: 5. 灵魂注入 (130元双通道配置)
         run: |
           mkdir -p clients/android/app/src/main/assets/
           cat <<EOF > clients/android/app/src/main/assets/default_config.json
@@ -48,38 +53,35 @@ jobs:
           }
           EOF
 
-      - name: 5. 磨制发动机 (libbox.aar)
+      - name: 6. 零件生产 (libbox.aar)
         run: |
           export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
           go run ./cmd/internal/build_libbox -target android
           mkdir -p clients/android/app/libs/
           cp libbox.aar clients/android/app/libs/
 
-      - name: 6. 核心手术：全量覆盖所有 API 声明 (逻辑核心)
-        # 使用强大的 Perl 正则，精准定位 minSdk 后面跟着的任何数字并改为 23
+      - name: 7. 暴力适配 API 23 (解决 Manifest 冲突)
         run: |
           find clients/android -type f \( -name "*.gradle" -o -name "*.kts" \) -print0 | xargs -0 perl -pi -e 's/(minSdk.*?)\d+/$1 23/g'
           find clients/android -type f \( -name "*.gradle" -o -name "*.kts" \) -print0 | xargs -0 perl -pi -e 's/(minSdkVersion.*?)\d+/$1 23/g'
-          echo "✅ 全项目所有 minSdk 版本已强制对齐到 23"
 
-      - name: 7. 总装编译
+      - name: 8. 终极打包 (OtherDebug)
         run: |
           cd clients/android
           chmod +x gradlew
-          # 跳过所有无关任务，专注出包
           ./gradlew :app:assembleOtherDebug -x lint -x test --no-daemon
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 8. 雷达搜索与自动提货
+      - name: 9. 提货
         if: always()
         run: |
           mkdir -p ./output_apks
           find . -name "*.apk" -type f -exec cp {} ./output_apks/ \;
           ls -R ./output_apks/
 
-      - name: 9. 成果上传
+      - name: 10. 上传成品
         uses: actions/upload-artifact@v4
         with:
-          name: 大哥专线-成品包-2026版
+          name: 大哥专线-v1.10.1-稳定版成品
           path: ./output_apks/*.apk
