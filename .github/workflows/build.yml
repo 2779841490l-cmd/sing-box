@@ -1,4 +1,4 @@
-name: 大哥专线-暴力总装-终极版
+name: 大哥专线-API适配-终极冲锋版
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 检出代码 (含子模块)
+      - name: 1. 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -34,7 +34,6 @@ jobs:
 
       - name: 4. 灵魂注入 (default_config.json)
         run: |
-          # 在安卓主目录下创建 assets
           mkdir -p clients/android/app/src/main/assets/
           cat <<EOF > clients/android/app/src/main/assets/default_config.json
           {
@@ -48,35 +47,37 @@ jobs:
           }
           EOF
 
-      - name: 5. 磨制发动机 (多地存放)
+      - name: 5. 磨制发动机 (libbox.aar)
         run: |
           export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
           go run ./cmd/internal/build_libbox -target android
-          # 把生成的零件塞进所有可能的 libs 文件夹，防止安卓项目找不到
           mkdir -p clients/android/app/libs/
-          mkdir -p clients/android/libs/
           cp libbox.aar clients/android/app/libs/
-          cp libbox.aar clients/android/libs/
-          echo "✅ 发动机已就位"
 
-      - name: 6. 暴力总装 (跳过检查，直奔 APK)
+      - name: 6. 关键手术：解决 SDK 21 与 23 冲突
+        run: |
+          # 自动修改所有 gradle 文件，把 minSdkVersion 从 21 改成 23
+          find clients/android -name "*.gradle*" -exec sed -i 's/minSdkVersion 21/minSdkVersion 23/g' {} +
+          find clients/android -name "*.gradle*" -exec sed -i 's/minSdk = 21/minSdk = 23/g' {} +
+          echo "✅ 已强制提升最小 SDK 版本到 23 (Android 6.0)"
+
+      - name: 7. 暴力总装 (跳过检查)
         run: |
           cd clients/android
           chmod +x gradlew
-          # 使用 -x lint 和 -x test 跳过所有那些烦人的检查
           ./gradlew :app:assembleOtherDebug -x lint -x test --no-daemon
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 7. 雷达搜索
-        if: always() # 即使失败也要运行，看看文件到底去哪了
+      - name: 8. 雷达搜索与提货
+        if: always()
         run: |
           mkdir -p ./output_apks
           find . -name "*.apk" -type f -exec cp {} ./output_apks/ \;
           ls -R ./output_apks/
 
-      - name: 8. 提货
+      - name: 9. 最终提货
         uses: actions/upload-artifact@v4
         with:
-          name: 大哥专线-成品包
+          name: 大哥专线-无感成品包-API23
           path: ./output_apks/*.apk
